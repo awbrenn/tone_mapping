@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <OpenImageIO/imageio.h>
 
 #ifdef __APPLE__
@@ -29,12 +30,13 @@ struct pixel {
 };
 
 // Global Variables
+float GAMMA
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
 pixel **ORIGINAL_IMAGE;
 char *OUTPUT_FILE = NULL;
-int FILTER_SIZE;
+int FILTER_SIZE = 15;
 float **FILTER;
 
 
@@ -225,7 +227,7 @@ void calculateFilterMap(float ** &filter_map, int filter_range, pixel **pixmap, 
 }
 
 
-// convolves a pixmap with a the global FILTER
+// convolves a pixmap with FILTER
 void convolveImage() {
     pixel ** convolved_pixmap;
 
@@ -434,33 +436,64 @@ void flipFilterXandY() {
     delete temp_filter;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 3 and argc != 4)
-        handleError("Proper use:\n$> filt filter.filt input.img\n"
-                "$> filt filter.filt input.img output.img", 1);
-    if (argc == 4) // specified output file
-        OUTPUT_FILE = argv[3];
+void getWorldLuminance(Image image, float &** luminance_map) {
+    luminance_map = new float*[image.height];
+    luminance_map[0] = new float[image.width * image.height];
+    pixel pixel;
 
-    readFilter(argv[1]);
+    for (int i = 1; i < image.height; i++)
+        luminance_map[i] = luminance_map[i - 1] + image.width;
+
+    for (int row = 0; row < image.height; row++)
+        for (int col = 0; col < image.width; col++) {
+            pixel = image.pixmap[row][col];
+            luminance_map[row][col] = (1.0/61.0)*(20.0*pixel.r + 40.0*pixel.g + pixel.b);
+        }
+}
+
+void getDisplayLuminance(float &** LW_map, float &** LD_map) {
+    LD_map = new float*[IMAGE_HEIGHT];
+    LD_map[0] = new float[IMAGE_WIDTH * IMAGE_HEIGHT];
+    pixel pixel;
+
+    for (int i = 1; i < IMAGE_HEIGHT; i++)
+        LD_map[i] = LD_map[i - 1] + IMAGE_WIDTH;
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LD_map[row][col] = exp(GAMMA*log(LW_map[row][col]));
+        }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2 and argc != 3)
+        handleError("Proper use:\n$> tonemap input.img\n"
+                "$> tonemap image.img output.img\n"
+                "supported input image formats: .exr .hdr\n"
+                "supported output image formats: .exr .hdr .png. jpg .tiff and possibly more", 1);
+    if (argc == 3) // specified output file
+        OUTPUT_FILE = argv[2];
+
+    FILTER = new float*[FILTER_SIZE];
+    FILTER[0] = new float[FILTER_SIZE*FILTER_SIZE];
+    for (int i = 1; i < FILTER_SIZE; i++)
+        FILTER[i] = FILTER[i - 1] + FILTER_SIZE;
+
+    for (int row = 0; row < FILTER_SIZE; row++)
+        for (int col = 0; col < FILTER_SIZE; col++) {
+            FILTER[row][col] = 1;
+        }
     normalizeFilter();
     flipFilterXandY();
 
-    Image original_image = readImage(argv[2]);
-    PIXMAP = original_image.pixmap;
+    Image image = readImage(argv[1]);
+    PIXMAP = image.pixmap;
 
+    float ** LD_map; // display luminance map
+    float ** LW_map; // world luminance map
 
-    // save the pixel information of the original image
-    ORIGINAL_IMAGE = new pixel *[IMAGE_HEIGHT];
-    ORIGINAL_IMAGE[0] = new pixel[IMAGE_WIDTH * IMAGE_HEIGHT];
-
-    for (int i = 1; i < IMAGE_HEIGHT; i++)
-        ORIGINAL_IMAGE[i] = ORIGINAL_IMAGE[i - 1] + IMAGE_WIDTH;
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++) {
-        for (int col = 0; col < IMAGE_HEIGHT; col++) {
-            ORIGINAL_IMAGE[row][col] = PIXMAP[row][col];
-        }
-    }
+    getWorldLuminance(image, LW_map);
+    getDisplayLuminance(LW_map, LD_map);
 
     openGlInit(argc, argv);
 }
