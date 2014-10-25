@@ -13,6 +13,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <float.h>
 #include <OpenImageIO/imageio.h>
 
 #ifdef __APPLE__
@@ -30,7 +31,7 @@ struct pixel {
 };
 
 // Global Variables
-float GAMMA
+float GAMMA = 0.5;
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
@@ -326,7 +327,7 @@ void openGlInit(int argc, char* argv[]) {
     // create the graphics window, giving width, height, and title text
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA);
     glutInitWindowSize(IMAGE_WIDTH, IMAGE_HEIGHT);
-    glutCreateWindow("A Display for an Image");
+    glutCreateWindow("Tonemap Result");
 
     // set up the callback routines to be called when glutMainLoop() detects
     // an event
@@ -436,7 +437,7 @@ void flipFilterXandY() {
     delete temp_filter;
 }
 
-void getWorldLuminance(Image image, float &** luminance_map) {
+void getWorldLuminance(Image image, float ** &luminance_map) {
     luminance_map = new float*[image.height];
     luminance_map[0] = new float[image.width * image.height];
     pixel pixel;
@@ -451,10 +452,9 @@ void getWorldLuminance(Image image, float &** luminance_map) {
         }
 }
 
-void getDisplayLuminance(float &** LW_map, float &** LD_map) {
+void getDisplayLuminance(float ** &LW_map, float ** &LD_map) {
     LD_map = new float*[IMAGE_HEIGHT];
     LD_map[0] = new float[IMAGE_WIDTH * IMAGE_HEIGHT];
-    pixel pixel;
 
     for (int i = 1; i < IMAGE_HEIGHT; i++)
         LD_map[i] = LD_map[i - 1] + IMAGE_WIDTH;
@@ -463,6 +463,24 @@ void getDisplayLuminance(float &** LW_map, float &** LD_map) {
         for (int col = 0; col < IMAGE_WIDTH; col++) {
             LD_map[row][col] = exp(GAMMA*log(LW_map[row][col]));
         }
+}
+
+float LDOverLW(float LD, float LW) {
+    if (LW == 0) {
+        LW = FLT_MIN;
+    }
+    return LD / LW;
+}
+
+void calculateGammaCorrectedImage(float ** &LD_map, float ** &LW_map, pixel ** &image_pixmap) {
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
+            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
+            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
+        }
+
 }
 
 int main(int argc, char *argv[]) {
@@ -487,13 +505,17 @@ int main(int argc, char *argv[]) {
     flipFilterXandY();
 
     Image image = readImage(argv[1]);
-    PIXMAP = image.pixmap;
 
     float ** LD_map; // display luminance map
     float ** LW_map; // world luminance map
 
     getWorldLuminance(image, LW_map);
     getDisplayLuminance(LW_map, LD_map);
+    calculateGammaCorrectedImage(LD_map, LW_map, image.pixmap);
+    delete LD_map;
+    delete LW_map;
+
+    PIXMAP = image.pixmap;
 
     openGlInit(argc, argv);
 }
