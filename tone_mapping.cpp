@@ -31,7 +31,11 @@ struct pixel {
 };
 
 // Global Variables
-float GAMMA = 0.5;
+float GAMMA = 0.45;
+float ** LD_map; // display luminance map
+float ** LW_map; // world luminance map
+float ** LW_map_low_pass; // world luminace with applied filter
+float ** LW_map_high_pass; // subtract LW low pass from log(LW)
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
@@ -71,6 +75,15 @@ void handleError (string message, bool kill) {
     cout << "ERROR: " << message << "\n";
     if (kill)
         exit(0);
+}
+
+void initializeLuminanceMap(float ** &luminance_map) {
+    luminance_map = new float*[IMAGE_HEIGHT];
+    luminance_map[0] = new float[IMAGE_WIDTH * IMAGE_HEIGHT];
+
+
+    for (int i = 1; i < IMAGE_HEIGHT; i++)
+        luminance_map[i] = luminance_map[i - 1] + IMAGE_WIDTH;
 }
 
 /* Converts pixels from vector to pixel pointers
@@ -204,73 +217,40 @@ float sumFilterMapValues(float ** &filter) {
 }
 
 
-// Calculates the correct kernal values on a specified channel
-void calculateFilterMap(float ** &filter_map, int filter_range, pixel **pixmap, int pixmap_row, int pixmap_col, int channel) {
-    int offset_pixmap_row, offset_pixmap_col;
+// Calculates the kernal values on a specified channel
+void calculateFilterMap(float ** &filter_map, int filter_range, float **LW_map, int LW_map_row, int LW_map_col) {
+    int offset_LW_map_row, offset_LW_map_col;
 
     for (int filt_row = 0; filt_row < FILTER_SIZE; filt_row++) {
-        offset_pixmap_row = pixmap_row + filt_row - filter_range;
+        offset_LW_map_row = LW_map_row + filt_row - filter_range;
         for (int filt_col = 0; filt_col < FILTER_SIZE; filt_col++) {
-            offset_pixmap_col = pixmap_col + filt_col - filter_range;
+            offset_LW_map_col = LW_map_col + filt_col - filter_range;
 
-            if (offset_pixmap_row < 0 or offset_pixmap_row >= IMAGE_HEIGHT or offset_pixmap_col < 0 or offset_pixmap_col >= IMAGE_WIDTH)
+            if (offset_LW_map_row < 0 or offset_LW_map_row >= IMAGE_HEIGHT or offset_LW_map_col < 0 or offset_LW_map_col >= IMAGE_WIDTH)
                 filter_map[filt_row][filt_col] = 0.0;
-            else {
-                if (channel == 0)
-                    filter_map[filt_row][filt_col] = pixmap[offset_pixmap_row][offset_pixmap_col].r * FILTER[filt_row][filt_col];
-                else if (channel == 1)
-                    filter_map[filt_row][filt_col] = pixmap[offset_pixmap_row][offset_pixmap_col].g * FILTER[filt_row][filt_col];
-                else if (channel == 2)
-                    filter_map[filt_row][filt_col] = pixmap[offset_pixmap_row][offset_pixmap_col].b * FILTER[filt_row][filt_col];
-            }
+            else
+                filter_map[filt_row][filt_col] = LW_map[offset_LW_map_row][offset_LW_map_col] * FILTER[filt_row][filt_col];
         }
     }
 }
 
 
 // convolves a pixmap with FILTER
-void convolveImage() {
-    pixel ** convolved_pixmap;
-
-    convolved_pixmap = new pixel *[IMAGE_HEIGHT];
-    convolved_pixmap[0] = new pixel[IMAGE_WIDTH * IMAGE_HEIGHT];
-
-    for (int i = 1; i < IMAGE_HEIGHT; i++)
-        convolved_pixmap[i] = convolved_pixmap[i - 1] + IMAGE_WIDTH;
+void convolveWorldLuminance() {
 
     int filter_range;
-    float **filter_map_red;
-    float **filter_map_green;
-    float **filter_map_blue;
+    float **filter_map;
 
     filter_range = FILTER_SIZE / 2;
 
-    initializeFilterMap(filter_map_red);
-    initializeFilterMap(filter_map_green);
-    initializeFilterMap(filter_map_blue);
+    initializeFilterMap(filter_map);
 
-    for (int row = 0; row < IMAGE_HEIGHT; row++) {
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
         for (int col = 0; col < IMAGE_WIDTH; col++) {
-            calculateFilterMap(filter_map_red, filter_range, PIXMAP, row, col, 0);
-            calculateFilterMap(filter_map_green, filter_range, PIXMAP, row, col, 1);
-            calculateFilterMap(filter_map_blue, filter_range, PIXMAP, row, col, 2);
+            calculateFilterMap(filter_map, filter_range, LW_map_low_pass, row, col);
 
-            convolved_pixmap[row][col].r = sumFilterMapValues(filter_map_red);
-            convolved_pixmap[row][col].g = sumFilterMapValues(filter_map_green);
-            convolved_pixmap[row][col].b = sumFilterMapValues(filter_map_blue);
-            convolved_pixmap[row][col].a = 1.0;
+            LW_map_low_pass[row][col] = sumFilterMapValues(filter_map);
         }
-    }
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++) {
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            PIXMAP[row][col].r = convolved_pixmap[row][col].r;
-            PIXMAP[row][col].g = convolved_pixmap[row][col].g;
-            PIXMAP[row][col].b = convolved_pixmap[row][col].b;
-            PIXMAP[row][col].a = convolved_pixmap[row][col].a;
-        }
-    }
-    free(convolved_pixmap);
 }
 
 
@@ -304,15 +284,6 @@ void handleKey(unsigned char key, int x, int y) {
         cout << "\nProgram Terminated." << endl;
         exit(0);
     }
-    else if (key == 'c') {
-        convolveImage();
-        drawImage();
-    }
-    else if (key == 'r') {
-        restoreOriginalImage();
-        drawImage();
-    }
-
 }
 
 
@@ -350,30 +321,6 @@ void openGlInit(int argc, char* argv[]) {
 }
 
 
-// Reads a filter from a file
-void readFilter(char *filter_filename) {
-    FILE * pFile;
-    pFile = fopen (filter_filename, "r");
-    int filter_size;
-    float filter_value;
-    fscanf(pFile, "%d", &filter_size);
-    FILTER_SIZE = filter_size;
-    FILTER = new float*[FILTER_SIZE];
-    FILTER[0] = new float[FILTER_SIZE*FILTER_SIZE];
-
-    for (int i = 1; i < FILTER_SIZE; i++)
-        FILTER[i] = FILTER[i - 1] + FILTER_SIZE;
-
-    for(int row = 0; row < FILTER_SIZE; row++)
-        for(int col = 0; col < FILTER_SIZE; col++) {
-            fscanf(pFile, "%f", &filter_value);
-            FILTER[row][col] = filter_value;
-        }
-
-    fclose(pFile);
-}
-
-
 /*  Finds the maximum of two floating point numbers.
     If the numbers are equal maximum returns a.
  */
@@ -391,7 +338,7 @@ float maximum(float a, float b) {
     Divides the filter by the calculated scale factor.
  */
 void normalizeFilter() {
-    float scale_factor, filter_value, sum_of_negative_values = 0, sum_of_posotive_values = 0;
+    float scale_factor, filter_value, sum_of_negative_values = 0, sum_of_positive_values = 0;
 
     for (int row = 0; row < FILTER_SIZE; row++)
         for (int col = 0; col < FILTER_SIZE; col++) {
@@ -399,9 +346,9 @@ void normalizeFilter() {
             if (filter_value < 0)
                 sum_of_negative_values += -1.0 * filter_value; // multiply by -1.0 for absolute value
             else if (filter_value > 0)
-                sum_of_posotive_values += filter_value;
+                sum_of_positive_values += filter_value;
         }
-    scale_factor = maximum(sum_of_posotive_values, sum_of_negative_values);
+    scale_factor = maximum(sum_of_positive_values, sum_of_negative_values);
     if (scale_factor != 0)
         scale_factor = 1.0 / scale_factor;
     else
@@ -418,11 +365,7 @@ void normalizeFilter() {
 void flipFilterXandY() {
     float **temp_filter;
 
-    temp_filter = new float*[FILTER_SIZE];
-    temp_filter[0] = new float[FILTER_SIZE*FILTER_SIZE];
-
-    for (int i = 1; i < FILTER_SIZE; i++)
-        temp_filter[i] = temp_filter[i - 1] + FILTER_SIZE;
+    initializeFilterMap(temp_filter);
 
     for (int row = 0; row < FILTER_SIZE; row++)
         for (int col = 0; col < FILTER_SIZE; col++) {
@@ -437,31 +380,45 @@ void flipFilterXandY() {
     delete temp_filter;
 }
 
-void getWorldLuminance(Image image, float ** &luminance_map) {
-    luminance_map = new float*[image.height];
-    luminance_map[0] = new float[image.width * image.height];
+void getWorldLuminance(pixel ** &pixmap) {
     pixel pixel;
-
-    for (int i = 1; i < image.height; i++)
-        luminance_map[i] = luminance_map[i - 1] + image.width;
-
-    for (int row = 0; row < image.height; row++)
-        for (int col = 0; col < image.width; col++) {
-            pixel = image.pixmap[row][col];
-            luminance_map[row][col] = (1.0/61.0)*(20.0*pixel.r + 40.0*pixel.g + pixel.b);
-        }
-}
-
-void getDisplayLuminance(float ** &LW_map, float ** &LD_map) {
-    LD_map = new float*[IMAGE_HEIGHT];
-    LD_map[0] = new float[IMAGE_WIDTH * IMAGE_HEIGHT];
-
-    for (int i = 1; i < IMAGE_HEIGHT; i++)
-        LD_map[i] = LD_map[i - 1] + IMAGE_WIDTH;
 
     for (int row = 0; row < IMAGE_HEIGHT; row++)
         for (int col = 0; col < IMAGE_WIDTH; col++) {
-            LD_map[row][col] = exp(GAMMA*log(LW_map[row][col]));
+            pixel = pixmap[row][col];
+            LW_map[row][col] = (1.0/61.0)*(20.0*pixel.r + 40.0*pixel.g + pixel.b);
+        }
+}
+
+float logWithCorrectionForLogOfZero(float value) {
+    if (value == 0) {
+        value = FLT_MIN;
+    }
+    return log(value);
+}
+
+void getDisplayLuminance() {
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LD_map[row][col] = exp(GAMMA* logWithCorrectionForLogOfZero(LW_map[row][col]));
+        }
+}
+
+void getDisplayLuminanceWithConvolutionOnLW() {
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LW_map_low_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]);
+        }
+    convolveWorldLuminance();
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LW_map_high_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]) - LW_map_low_pass[row][col];
+        }
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LD_map[row][col] = exp(GAMMA * LW_map_low_pass[row][col] + LW_map_high_pass[row][col]);
         }
 }
 
@@ -472,7 +429,9 @@ float LDOverLW(float LD, float LW) {
     return LD / LW;
 }
 
-void calculateGammaCorrectedImage(float ** &LD_map, float ** &LW_map, pixel ** &image_pixmap) {
+void calculateGammaCorrectedImage(pixel ** &image_pixmap) {
+    getWorldLuminance(image_pixmap);
+    getDisplayLuminance();
 
     for (int row = 0; row < IMAGE_HEIGHT; row++)
         for (int col = 0; col < IMAGE_WIDTH; col++) {
@@ -481,6 +440,18 @@ void calculateGammaCorrectedImage(float ** &LD_map, float ** &LW_map, pixel ** &
             image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
         }
 
+}
+
+void calculateGammaCorrecedImageWithConvolution(pixel ** &image_pixmap) {
+    getWorldLuminance(image_pixmap);
+    getDisplayLuminanceWithConvolutionOnLW();
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
+            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
+            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
+        }
 }
 
 int main(int argc, char *argv[]) {
@@ -492,30 +463,45 @@ int main(int argc, char *argv[]) {
     if (argc == 3) // specified output file
         OUTPUT_FILE = argv[2];
 
-    FILTER = new float*[FILTER_SIZE];
-    FILTER[0] = new float[FILTER_SIZE*FILTER_SIZE];
-    for (int i = 1; i < FILTER_SIZE; i++)
-        FILTER[i] = FILTER[i - 1] + FILTER_SIZE;
+    initializeFilterMap(FILTER);
 
+    // set all filter values to 1
     for (int row = 0; row < FILTER_SIZE; row++)
         for (int col = 0; col < FILTER_SIZE; col++) {
             FILTER[row][col] = 1;
         }
+
     normalizeFilter();
     flipFilterXandY();
 
     Image image = readImage(argv[1]);
 
-    float ** LD_map; // display luminance map
-    float ** LW_map; // world luminance map
+    bool with_convolution = false;
 
-    getWorldLuminance(image, LW_map);
-    getDisplayLuminance(LW_map, LD_map);
-    calculateGammaCorrectedImage(LD_map, LW_map, image.pixmap);
-    delete LD_map;
-    delete LW_map;
+
+
+    if (with_convolution) {
+        initializeLuminanceMap(LW_map);
+        initializeLuminanceMap(LD_map);
+        initializeLuminanceMap(LW_map_low_pass);
+        initializeLuminanceMap(LW_map_high_pass);
+        calculateGammaCorrecedImageWithConvolution(image.pixmap);
+        delete LD_map;
+        delete LW_map;
+        delete LW_map_low_pass;
+        delete LW_map_high_pass;
+    }
+    else  {
+        initializeLuminanceMap(LW_map);
+        initializeLuminanceMap(LD_map);
+        calculateGammaCorrectedImage(image.pixmap);
+        delete LD_map;
+        delete LW_map;
+    }
 
     PIXMAP = image.pixmap;
+
+
 
     openGlInit(argc, argv);
 }
