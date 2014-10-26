@@ -41,7 +41,7 @@ float LW_low_pass_max_value;
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
-pixel **ORIGINAL_IMAGE;
+pixel **COPY_PIXMAP;
 char *OUTPUT_FILE = NULL;
 int FILTER_SIZE = 15;
 float **FILTER;
@@ -256,14 +256,39 @@ void convolveWorldLuminance() {
         }
 }
 
+void initializePixmap(pixel ** &pixmap) {
+    pixmap = new pixel*[IMAGE_HEIGHT];
+    pixmap[0] = new pixel[IMAGE_WIDTH * IMAGE_HEIGHT];
+
+    for (int i = 1; i < IMAGE_HEIGHT; i++)
+        pixmap[i] = pixmap[i - 1] + IMAGE_WIDTH;
+}
+
 
 // Restores the image to it's original
 void restoreOriginalImage() {
-    for (int row = 0; row < IMAGE_HEIGHT; row++) {
-        for (int col = 0; col < IMAGE_HEIGHT; col++) {
-            PIXMAP[row][col] = ORIGINAL_IMAGE[row][col];
+    pixel ** temp_pixmap;
+
+    initializePixmap(temp_pixmap);
+
+    // copy current pixmap
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            temp_pixmap[row][col] = PIXMAP[row][col];
         }
-    }
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            PIXMAP[row][col] = COPY_PIXMAP[row][col];
+        }
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            COPY_PIXMAP[row][col] = temp_pixmap[row][col];
+        }
+
+    drawImage();
+    delete temp_pixmap;
 }
 
 
@@ -286,6 +311,9 @@ void handleKey(unsigned char key, int x, int y) {
     else if (key == 'q' || key == 'Q') {
         cout << "\nProgram Terminated." << endl;
         exit(0);
+    }
+    else if (key == 's' || key == 'S') {
+        restoreOriginalImage();
     }
 }
 
@@ -491,6 +519,12 @@ int main(int argc, char *argv[]) {
     GAMMA = atof(argv[2]);
 
     Image image = readImage(argv[3]);
+
+    initializePixmap(COPY_PIXMAP);
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            COPY_PIXMAP[row][col] = image.pixmap[row][col];
+        }
 
     if (with_convolution) {
         initializeLuminanceMap(LW_map);
