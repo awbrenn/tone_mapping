@@ -31,11 +31,13 @@ struct pixel {
 };
 
 // Global Variables
-float GAMMA = 0.45;
+float GAMMA;
 float ** LD_map; // display luminance map
 float ** LW_map; // world luminance map
 float ** LW_map_low_pass; // world luminace with applied filter
 float ** LW_map_high_pass; // subtract LW low pass from log(LW)
+float LW_low_pass_min_value;
+float LW_low_pass_max_value;
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
@@ -43,6 +45,7 @@ pixel **ORIGINAL_IMAGE;
 char *OUTPUT_FILE = NULL;
 int FILTER_SIZE = 15;
 float **FILTER;
+string FLAG_OPTIONS[2] = {"-g", "-c"};
 
 
 // Image Class
@@ -391,7 +394,7 @@ void getWorldLuminance(pixel ** &pixmap) {
 }
 
 float logWithCorrectionForLogOfZero(float value) {
-    if (value == 0) {
+    if (value <= 0) {
         value = FLT_MIN;
     }
     return log(value);
@@ -423,7 +426,7 @@ void getDisplayLuminanceWithConvolutionOnLW() {
 }
 
 float LDOverLW(float LD, float LW) {
-    if (LW == 0) {
+    if (LW <= 0) {
         LW = FLT_MIN;
     }
     return LD / LW;
@@ -455,13 +458,13 @@ void calculateGammaCorrecedImageWithConvolution(pixel ** &image_pixmap) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2 and argc != 3)
-        handleError("Proper use:\n$> tonemap input.img\n"
-                "$> tonemap image.img output.img\n"
+    if (argc != 4 and argc != 5)
+        handleError("Proper use:\n$> tonemap ['-c' or '-g' need to use one] gamma_value input.img\n"
+                "$> tonemap ['-c' or '-g' need to use one] gamma_value input.img output.img\n"
                 "supported input image formats: .exr .hdr\n"
                 "supported output image formats: .exr .hdr .png. jpg .tiff and possibly more", 1);
-    if (argc == 3) // specified output file
-        OUTPUT_FILE = argv[2];
+    if (argc == 5) // specified output file
+        OUTPUT_FILE = argv[4];
 
     initializeFilterMap(FILTER);
 
@@ -474,11 +477,20 @@ int main(int argc, char *argv[]) {
     normalizeFilter();
     flipFilterXandY();
 
-    Image image = readImage(argv[1]);
+    bool with_convolution;
 
-    bool with_convolution = false;
+    if (FLAG_OPTIONS[0].compare(argv[1]))
+        with_convolution = true;
+    else if (FLAG_OPTIONS[1].compare(argv[1]))
+        with_convolution = false;
+    else
+        handleError("\nInvalid flag options\nValid flag options are: [-g] for simple tonemap and [-c]"
+                "which convovles the log-space luminance into a blurred channel and sharpened channel S,"
+                " and recomposes them as gamma * B + S\n", 1);
 
+    GAMMA = atof(argv[2]);
 
+    Image image = readImage(argv[3]);
 
     if (with_convolution) {
         initializeLuminanceMap(LW_map);
