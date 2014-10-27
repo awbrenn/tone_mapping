@@ -25,18 +25,32 @@ Use Cases:
     - same functionality as above except 'w' writes the image in the opengl
       window to output.img
 
+Best Submitted Images:
+    - The best images that i created can be found in the images folder. The two images are the following:
+         - Best_Simple_Tone_Map.png
+         - Best_Tone_Map_with_Convolution_Output.png
+
+    - I used a gamma value of 0.45 for both of these images
+    - The images can be reproduced by following the use case examples above with 0.45 set for the gamma
+
 Description of flags:
-    Valid flag options are: [-g] for simple tonemap and [-c] which convolves the log-space
-    luminance into a blurred channel and sharpened channel S,and recomposes them as gamma * B + S
+    - Valid flag options are: [-g] for simple tonemap and [-c] which convolves the log-space
+      luminance into a blurred channel and sharpened channel S,and recomposes them as gamma * B + S
 
 Known Bugs:
-    -
+    - Something is wrong with images with a very high dynamic range. It is very noticeable in the
+      smalldesignCenter.hdr image. Hardly anything is visible and I don't know why.
+
+    - There is an artifact where pixels are assigned bizarre values. It is noticible in the Ocean.exr
+      in the bottom left corner.
+
+    - Program seg faults when writing to hdr images. I think this is an OIIO problem with writing a four
+      channel image to an hdr format.
 
 Boundary Handling (for convolution of luminance map):
     - Sets luminance values that lie outside of the image boundaries to black.
       That is luminance = 0.0
     - This is handled in the calculateFilterMap.
-
 
 Additional Information:
     - Nothing in the advanced section is implemented.
