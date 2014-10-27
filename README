@@ -1,0 +1,42 @@
+Author:   Austin Brennan
+Email:    awbrenn@g.clemson.edu
+Class:    CPSC 3220 - Levine
+Due Date: October 26th, 2014
+
+-------
+tonemap
+-------
+
+Program Description:
+    The program takes an image and a filter specified by [filter].filt and calculates
+    a convolution of the filter on the specified image.
+
+Compilation:
+    $> make
+
+Use Cases:
+    $> ./tonemap ['-c' or '-g' need to use one] gamma_value input.img
+
+    - Displays the input image with tone map applied in an opengl window
+    - Press 's' or 'S' to flip between a non tone mapped image and tone mapped image
+
+    $> ./tonemap ['-c' or '-g' need to use one] gamma_value input.img output.img
+
+    - same functionality as above except 'w' writes the image in the opengl
+      window to output.img
+
+Description of flags:
+    Valid flag options are: [-g] for simple tonemap and [-c] which convolves the log-space
+    luminance into a blurred channel and sharpened channel S,and recomposes them as gamma * B + S
+
+Known Bugs:
+    -
+
+Boundary Handling (for convolution of luminance map):
+    - Sets luminance values that lie outside of the image boundaries to black.
+      That is luminance = 0.0
+    - This is handled in the calculateFilterMap.
+
+
+Additional Information:
+    - Nothing in the advanced section is implemented.

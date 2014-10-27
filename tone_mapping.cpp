@@ -1,9 +1,9 @@
 /*
- * Program description: Convolves an image by a specified kernal.
+ * Program description: Applies a tone mapping algorithm on an input image
  *
  * Author: Austin Brennan - awbrenn@g.clemson.edu
  *
- * Date: October 13, 2014
+ * Date: October 26, 2014
  *
  * Other information: Check README for more information
  *
@@ -80,6 +80,9 @@ void handleError (string message, bool kill) {
         exit(0);
 }
 
+/*
+    Initializes a luminance map and sets it up for double array syntax for accessing elements
+ */
 void initializeLuminanceMap(float ** &luminance_map) {
     luminance_map = new float*[IMAGE_HEIGHT];
     luminance_map[0] = new float[IMAGE_WIDTH * IMAGE_HEIGHT];
@@ -88,6 +91,31 @@ void initializeLuminanceMap(float ** &luminance_map) {
     for (int i = 1; i < IMAGE_HEIGHT; i++)
         luminance_map[i] = luminance_map[i - 1] + IMAGE_WIDTH;
 }
+
+
+/*
+    Initializes a filter map and sets it up for double array syntax for accessing elements
+ */
+void initializeFilterMap(float ** &filter_map) {
+    filter_map = new float*[FILTER_SIZE];
+    filter_map[0] = new float[FILTER_SIZE*FILTER_SIZE];
+
+    for (int i = 1; i < FILTER_SIZE; i++)
+        filter_map[i] = filter_map[i - 1] + FILTER_SIZE;
+}
+
+
+/*
+    Initializes a pixmap and sets it up for double array syntax for accessing elements
+ */
+void initializePixmap(pixel ** &pixmap) {
+    pixmap = new pixel*[IMAGE_HEIGHT];
+    pixmap[0] = new pixel[IMAGE_WIDTH * IMAGE_HEIGHT];
+
+    for (int i = 1; i < IMAGE_HEIGHT; i++)
+        pixmap[i] = pixmap[i - 1] + IMAGE_WIDTH;
+}
+
 
 /* Converts pixels from vector to pixel pointers
  * input		- vector of pixels, number of channels
@@ -124,8 +152,8 @@ Image convertVectorToImage (vector<unsigned char> vector_pixels, int channels) {
 
 
 
-/* Flips image verticaly
- *
+/*
+    Flips image verticaly
  */
 pixel ** flipImageVertical(pixel **pixmap_vertical_flip) {
     for (int row = IMAGE_HEIGHT-1; row >= 0; row--)
@@ -182,30 +210,9 @@ void writeImage(unsigned char *glut_display_map, int window_width, int window_he
     cout << "SUCCESS: Image successfully written to " << OUTPUT_FILE << "\n";
 }
 
-/* Draw Image to opengl display
- * input		- None
- * output		- None
- * side effect	- draws image to opengl display window
- */
-void drawImage() {
-    glClear(GL_COLOR_BUFFER_BIT);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glRasterPos2i(0,0);
-    glDrawPixels(IMAGE_WIDTH, IMAGE_HEIGHT, GL_RGBA, GL_FLOAT, PIXMAP[0]);
-    glFlush();
-}
 
-void initializeFilterMap(float ** &filter_map) {
-    filter_map = new float*[FILTER_SIZE];
-    filter_map[0] = new float[FILTER_SIZE*FILTER_SIZE];
-
-    for (int i = 1; i < FILTER_SIZE; i++)
-        filter_map[i] = filter_map[i - 1] + FILTER_SIZE;
-}
-
-
-/*  Adds together the values of a filter
+/*
+    Adds together the values of a filter
     Used for calculating the pixel value of the center of a kernal
  */
 float sumFilterMapValues(float ** &filter) {
@@ -220,7 +227,9 @@ float sumFilterMapValues(float ** &filter) {
 }
 
 
-// Calculates the kernal values on a specified channel
+/*
+    Calculates the kernal values on a specified channel
+  */
 void calculateFilterMap(float ** &filter_map, int filter_range, float **LW_map, int LW_map_row, int LW_map_col) {
     int offset_LW_map_row, offset_LW_map_col;
 
@@ -238,7 +247,9 @@ void calculateFilterMap(float ** &filter_map, int filter_range, float **LW_map, 
 }
 
 
-// convolves a pixmap with FILTER
+/*
+    Convolves the world luminance map with the specified filter
+  */
 void convolveWorldLuminance() {
 
     int filter_range;
@@ -256,17 +267,11 @@ void convolveWorldLuminance() {
         }
 }
 
-void initializePixmap(pixel ** &pixmap) {
-    pixmap = new pixel*[IMAGE_HEIGHT];
-    pixmap[0] = new pixel[IMAGE_WIDTH * IMAGE_HEIGHT];
 
-    for (int i = 1; i < IMAGE_HEIGHT; i++)
-        pixmap[i] = pixmap[i - 1] + IMAGE_WIDTH;
-}
-
-
-// Restores the image to it's original
-void restoreOriginalImage() {
+/*
+    Restores the image to it's original
+  */
+void swapOriginalImageAndToneMappedImage() {
     pixel ** temp_pixmap;
 
     initializePixmap(temp_pixmap);
@@ -287,8 +292,186 @@ void restoreOriginalImage() {
             COPY_PIXMAP[row][col] = temp_pixmap[row][col];
         }
 
-    drawImage();
     delete temp_pixmap;
+}
+
+
+/*
+    Finds the maximum of two floating point numbers.
+    If the numbers are equal maximum returns a.
+ */
+float maximum(float a, float b) {
+    if (a < b)
+        return b;
+    else if (a > b)
+        return a;
+
+    return a;
+}
+
+
+/*
+    Calculates a scale factor.
+    Divides the filter by the calculated scale factor.
+ */
+void normalizeFilter() {
+    float scale_factor, filter_value, sum_of_negative_values = 0, sum_of_positive_values = 0;
+
+    for (int row = 0; row < FILTER_SIZE; row++)
+        for (int col = 0; col < FILTER_SIZE; col++) {
+            filter_value = FILTER[row][col];
+            if (filter_value < 0)
+                sum_of_negative_values += -1.0 * filter_value; // multiply by -1.0 for absolute value
+            else if (filter_value > 0)
+                sum_of_positive_values += filter_value;
+        }
+    scale_factor = maximum(sum_of_positive_values, sum_of_negative_values);
+    if (scale_factor != 0)
+        scale_factor = 1.0 / scale_factor;
+    else
+        scale_factor = 1.0;
+
+    for (int row = 0; row < FILTER_SIZE; row++)
+        for (int col = 0; col < FILTER_SIZE; col++) {
+            FILTER[row][col] = scale_factor * FILTER[row][col];
+        }
+}
+
+
+/*
+    Flips a kernal both horizontally and vertically
+  */
+void flipFilterXandY() {
+    float **temp_filter;
+
+    initializeFilterMap(temp_filter);
+
+    for (int row = 0; row < FILTER_SIZE; row++)
+        for (int col = 0; col < FILTER_SIZE; col++) {
+            temp_filter[row][col] = FILTER[(FILTER_SIZE-1)-row][(FILTER_SIZE-1)-col];
+        }
+
+    for (int row = 0; row < FILTER_SIZE; row++)
+        for (int col = 0; col < FILTER_SIZE; col++) {
+            FILTER[row][col] = temp_filter[row][col];
+        }
+
+    delete temp_filter;
+}
+
+/*
+    Gets the world luminance
+ */
+void getWorldLuminance(pixel ** &pixmap) {
+    pixel pixel;
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            pixel = pixmap[row][col];
+            LW_map[row][col] = (1.0/61.0)*(20.0*pixel.r + 40.0*pixel.g + pixel.b);
+        }
+}
+
+/*
+    Calculates the log with correction for log of zero which is undefined
+ */
+float logWithCorrectionForLogOfZero(float value) {
+    if (value <= 0) {
+        value = FLT_MIN;
+    }
+    return log(value);
+}
+
+
+/*
+    Gets the display luminance with simple tone mapping algorithm
+ */
+void getDisplayLuminance() {
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LD_map[row][col] = exp(GAMMA * logWithCorrectionForLogOfZero(LW_map[row][col]));
+        }
+}
+
+
+/*
+    Gets the display luminance with tone mapping with convolution algorithm
+  */
+void getDisplayLuminanceWithConvolutionOnLW() {
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LW_map_low_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]);
+        }
+    convolveWorldLuminance();
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LW_map_high_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]) - LW_map_low_pass[row][col];
+        }
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            LD_map[row][col] = exp(GAMMA * LW_map_low_pass[row][col] + LW_map_high_pass[row][col]);
+        }
+}
+
+
+/*
+    Calculates display luminance over world luminance and makes sure you don't divide by zero
+ */
+float LDOverLW(float LD, float LW) {
+    if (LW <= 0) {
+        LW = FLT_MIN;
+    }
+    return LD / LW;
+}
+
+
+/*
+    Calculates the gamma corrected image with simple tone map algorithm
+ */
+void calculateGammaCorrectedImage(pixel ** &image_pixmap) {
+    getWorldLuminance(image_pixmap);
+    getDisplayLuminance();
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
+            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
+            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
+        }
+
+}
+
+
+/*
+    Calculates the gamma corrected image with tone mapping with convolution algorithm
+ */
+void calculateGammaCorrecedImageWithConvolution(pixel ** &image_pixmap) {
+    getWorldLuminance(image_pixmap);
+    getDisplayLuminanceWithConvolutionOnLW();
+
+    for (int row = 0; row < IMAGE_HEIGHT; row++)
+        for (int col = 0; col < IMAGE_WIDTH; col++) {
+            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
+            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
+            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
+        }
+}
+
+
+/* Draw Image to opengl display
+ * input		- None
+ * output		- None
+ * side effect	- draws image to opengl display window
+ */
+void drawImage() {
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glRasterPos2i(0,0);
+    glDrawPixels(IMAGE_WIDTH, IMAGE_HEIGHT, GL_RGBA, GL_FLOAT, PIXMAP[0]);
+    glFlush();
 }
 
 
@@ -313,7 +496,8 @@ void handleKey(unsigned char key, int x, int y) {
         exit(0);
     }
     else if (key == 's' || key == 'S') {
-        restoreOriginalImage();
+        swapOriginalImageAndToneMappedImage();
+        drawImage();
     }
 }
 
@@ -352,144 +536,11 @@ void openGlInit(int argc, char* argv[]) {
 }
 
 
-/*  Finds the maximum of two floating point numbers.
-    If the numbers are equal maximum returns a.
- */
-float maximum(float a, float b) {
-    if (a < b)
-        return b;
-    else if (a > b)
-        return a;
-
-    return a;
-}
-
-
-/*  Calculates a scale factor.
-    Divides the filter by the calculated scale factor.
- */
-void normalizeFilter() {
-    float scale_factor, filter_value, sum_of_negative_values = 0, sum_of_positive_values = 0;
-
-    for (int row = 0; row < FILTER_SIZE; row++)
-        for (int col = 0; col < FILTER_SIZE; col++) {
-            filter_value = FILTER[row][col];
-            if (filter_value < 0)
-                sum_of_negative_values += -1.0 * filter_value; // multiply by -1.0 for absolute value
-            else if (filter_value > 0)
-                sum_of_positive_values += filter_value;
-        }
-    scale_factor = maximum(sum_of_positive_values, sum_of_negative_values);
-    if (scale_factor != 0)
-        scale_factor = 1.0 / scale_factor;
-    else
-        scale_factor = 1.0;
-
-    for (int row = 0; row < FILTER_SIZE; row++)
-        for (int col = 0; col < FILTER_SIZE; col++) {
-            FILTER[row][col] = scale_factor * FILTER[row][col];
-        }
-}
-
-
-// Flips a kernal both horizontally and vertically
-void flipFilterXandY() {
-    float **temp_filter;
-
-    initializeFilterMap(temp_filter);
-
-    for (int row = 0; row < FILTER_SIZE; row++)
-        for (int col = 0; col < FILTER_SIZE; col++) {
-            temp_filter[row][col] = FILTER[(FILTER_SIZE-1)-row][(FILTER_SIZE-1)-col];
-        }
-
-    for (int row = 0; row < FILTER_SIZE; row++)
-        for (int col = 0; col < FILTER_SIZE; col++) {
-            FILTER[row][col] = temp_filter[row][col];
-        }
-
-    delete temp_filter;
-}
-
-void getWorldLuminance(pixel ** &pixmap) {
-    pixel pixel;
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            pixel = pixmap[row][col];
-            LW_map[row][col] = (1.0/61.0)*(20.0*pixel.r + 40.0*pixel.g + pixel.b);
-        }
-}
-
-float logWithCorrectionForLogOfZero(float value) {
-    if (value <= 0) {
-        value = FLT_MIN;
-    }
-    return log(value);
-}
-
-void getDisplayLuminance() {
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            LD_map[row][col] = exp(GAMMA* logWithCorrectionForLogOfZero(LW_map[row][col]));
-        }
-}
-
-void getDisplayLuminanceWithConvolutionOnLW() {
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            LW_map_low_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]);
-        }
-    convolveWorldLuminance();
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            LW_map_high_pass[row][col] = logWithCorrectionForLogOfZero(LW_map[row][col]) - LW_map_low_pass[row][col];
-        }
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            LD_map[row][col] = exp(GAMMA * LW_map_low_pass[row][col] + LW_map_high_pass[row][col]);
-        }
-}
-
-float LDOverLW(float LD, float LW) {
-    if (LW <= 0) {
-        LW = FLT_MIN;
-    }
-    return LD / LW;
-}
-
-void calculateGammaCorrectedImage(pixel ** &image_pixmap) {
-    getWorldLuminance(image_pixmap);
-    getDisplayLuminance();
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
-            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
-            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
-        }
-
-}
-
-void calculateGammaCorrecedImageWithConvolution(pixel ** &image_pixmap) {
-    getWorldLuminance(image_pixmap);
-    getDisplayLuminanceWithConvolutionOnLW();
-
-    for (int row = 0; row < IMAGE_HEIGHT; row++)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            image_pixmap[row][col].r = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].r;
-            image_pixmap[row][col].g = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].g;
-            image_pixmap[row][col].b = LDOverLW(LD_map[row][col],  LW_map[row][col]) * image_pixmap[row][col].b;
-        }
-}
-
 int main(int argc, char *argv[]) {
     if (argc != 4 and argc != 5)
         handleError("Proper use:\n$> tonemap ['-c' or '-g' need to use one] gamma_value input.img\n"
                 "$> tonemap ['-c' or '-g' need to use one] gamma_value input.img output.img\n"
-                "supported input image formats: .exr .hdr\n"
+                "supported input image formats: .exr .png\n"
                 "supported output image formats: .exr .hdr .png. jpg .tiff and possibly more", 1);
     if (argc == 5) // specified output file
         OUTPUT_FILE = argv[4];
@@ -513,7 +564,7 @@ int main(int argc, char *argv[]) {
         with_convolution = false;
     else
         handleError("\nInvalid flag options\nValid flag options are: [-g] for simple tonemap and [-c]"
-                "which convovles the log-space luminance into a blurred channel and sharpened channel S,"
+                "which convolves the log-space luminance into a blurred channel and sharpened channel S,"
                 " and recomposes them as gamma * B + S\n", 1);
 
     GAMMA = atof(argv[2]);
