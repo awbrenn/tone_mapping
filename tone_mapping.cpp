@@ -122,7 +122,7 @@ void initializePixmap(pixel ** &pixmap) {
  * output		- None
  * side effect	- saves pixel data from vector to PIXMAP
  */
-Image convertVectorToImage (vector<unsigned char> vector_pixels, int channels) {
+Image convertVectorToImage (vector<float> vector_pixels, int channels) {
     Image image(IMAGE_WIDTH, IMAGE_HEIGHT);
 
     int i = 0;
@@ -178,8 +178,8 @@ Image readImage (string filename) {
     int channels = spec.nchannels;
     if(channels < 3 || channels > 4)
         handleError("Application supports 3 or 4 channel images only", 1);
-    vector<unsigned char> pixels (IMAGE_WIDTH*IMAGE_HEIGHT*channels);
-    in->read_image (TypeDesc::UINT8, &pixels[0]);
+    vector<float> pixels (IMAGE_WIDTH*IMAGE_HEIGHT*channels);
+    in->read_image (TypeDesc::FLOAT, &pixels[0]);
     in->close ();
     delete in;
 
@@ -192,7 +192,7 @@ Image readImage (string filename) {
  * output		- None
  * side effect	- writes image to a file
  */
-void writeImage(unsigned char *glut_display_map, int window_width, int window_height) {
+void writeImage(float *glut_display_map, int window_width, int window_height) {
     const char *filename = OUTPUT_FILE;
     const int xres = window_width, yres = window_height;
     const int channels = 4; // RGBA
@@ -202,9 +202,9 @@ void writeImage(unsigned char *glut_display_map, int window_width, int window_he
         handleError("Could not create output file", false);
         return;
     }
-    ImageSpec spec (xres, yres, channels, TypeDesc::UINT8);
+    ImageSpec spec (xres, yres, channels, TypeDesc::FLOAT);
     out->open (filename, spec);
-    out->write_image (TypeDesc::UINT8, glut_display_map+(window_height-1)*scanlinesize, AutoStride, -scanlinesize, AutoStride);
+    out->write_image (TypeDesc::FLOAT, glut_display_map);
     out->close ();
     delete out;
     cout << "SUCCESS: Image successfully written to " << OUTPUT_FILE << "\n";
@@ -484,8 +484,8 @@ void handleKey(unsigned char key, int x, int y) {
     if (key == 'w') {
         if(OUTPUT_FILE != NULL) {
             int window_width = glutGet(GLUT_WINDOW_WIDTH), window_height = glutGet(GLUT_WINDOW_HEIGHT);
-            unsigned char glut_display_map[window_width*window_height*4];
-            glReadPixels(0,0, window_width, window_height, GL_RGBA, GL_UNSIGNED_BYTE, glut_display_map);
+            float *glut_display_map = (float *) malloc(window_width*window_height*4);
+            glReadPixels(0,0, window_width, window_height, GL_RGBA, GL_FLOAT, glut_display_map);
             writeImage(glut_display_map, window_width, window_height);
         }
         else
