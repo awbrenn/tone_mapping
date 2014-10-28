@@ -46,11 +46,13 @@ Use Cases:
 
 Best Submitted Images:
     - The best images that i created can be found in the images folder. The two images are the following:
-         - Best_Simple_Tone_Map.png
-         - Best_Tone_Map_with_Convolution_Output.png
+         - Best_Ocean_With_Simple_Tonemap.png
+         - Best_SmallDesignCenter_With_Convolved_Tonemap.png
 
-    - I used a gamma value of 0.45 for both of these images
-    - The images can be reproduced by following the use case examples above with 0.45 set for the gamma
+    - I used a gamma value of 0.45 for Best_Ocean_With_Simple_Tonemap.png
+    - I used a gamma value of 0.15 for Best_SmallDesignCenter_With_Convolved_Tonemap.png
+    - The images can be produced by following the use case description and using the corresponding
+      gamma value
 
 Description of flags:
     - Valid flag options are: [-g] for simple tonemap and [-c] which convolves the log-space
