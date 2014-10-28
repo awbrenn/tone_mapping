@@ -1,11 +1,30 @@
 Author:   Austin Brennan
 Email:    awbrenn@g.clemson.edu
 Class:    CPSC 3220 - Levine
-Due Date: October 26th, 2014
+Due Date: October 27th, 2014
 
 -------
 tonemap
 -------
+
+Note on Project Lateness:
+    - Durring an email exchange yesterday October 26th, Dr. Levine said I could
+      turn this lab in today October 27th without penalty, so long as I only corrected an issue
+      where I was using unsigned chars instead of floats.
+
+    Here is a copy of his email addressed to me:
+
+    Austin,
+
+    I just looked at your code.  Why did you use UINT8 do read the data?  It's floating point data,
+    so you're supposed to read it using TypeDesc::FLOAT.  If you read it as char and then divide by
+    255, you will not actually read in the high dynamic range that is stored in the data.
+
+    Otherwise, your algorithms look OK!  Feel free to resubmit in the next 24 hrs provided you make
+    no other changes to the code other than you reading (and removing the extraneous /255 and cast)
+
+    Regards,
+    Dr. Levine
 
 Program Description:
     The program takes an image and a filter specified by [filter].filt and calculates
@@ -38,14 +57,7 @@ Description of flags:
       luminance into a blurred channel and sharpened channel S,and recomposes them as gamma * B + S
 
 Known Bugs:
-    - Something is wrong with images with a very high dynamic range. It is very noticeable in the
-      smalldesignCenter.hdr image. Hardly anything is visible and I don't know why.
-
-    - There is an artifact where pixels are assigned bizarre values. It is noticible in the Ocean.exr
-      in the bottom left corner.
-
-    - Program seg faults when writing to hdr images. I think this is an OIIO problem with writing a four
-      channel image to an hdr format.
+    - N/A
 
 Boundary Handling (for convolution of luminance map):
     - Sets luminance values that lie outside of the image boundaries to black.

@@ -36,8 +36,6 @@ float ** LD_map; // display luminance map
 float ** LW_map; // world luminance map
 float ** LW_map_low_pass; // world luminace with applied filter
 float ** LW_map_high_pass; // subtract LW low pass from log(LW)
-float LW_low_pass_min_value;
-float LW_low_pass_max_value;
 int IMAGE_HEIGHT;
 int IMAGE_WIDTH;
 pixel **PIXMAP;
@@ -129,19 +127,19 @@ Image convertVectorToImage (vector<float> vector_pixels, int channels) {
     if (channels == 3) {
         for (int row = image.height-1; row >= 0; row--)
             for (int col = 0; col < image.width; col++) {
-                image.pixmap[row][col].r = (float) vector_pixels[i++] / 255.0;
-                image.pixmap[row][col].g = (float) vector_pixels[i++] / 255.0;
-                image.pixmap[row][col].b = (float) vector_pixels[i++] / 255.0;
+                image.pixmap[row][col].r = vector_pixels[i++];
+                image.pixmap[row][col].g = vector_pixels[i++];
+                image.pixmap[row][col].b = vector_pixels[i++];
                 image.pixmap[row][col].a = 1.0;
             }
     }
     else if (channels == 4) {
         for (int row = image.height-1; row >= 0; row--)
             for (int col = 0; col < image.width; col++) {
-                image.pixmap[row][col].r = (float) vector_pixels[i++] / 255.0;
-                image.pixmap[row][col].g = (float) vector_pixels[i++] / 255.0;
-                image.pixmap[row][col].b = (float) vector_pixels[i++] / 255.0;
-                image.pixmap[row][col].a = (float) vector_pixels[i++] / 255.0;
+                image.pixmap[row][col].r = vector_pixels[i++];
+                image.pixmap[row][col].g = vector_pixels[i++];
+                image.pixmap[row][col].b = vector_pixels[i++];
+                image.pixmap[row][col].a = vector_pixels[i++];
             }
     }
     else
@@ -155,13 +153,29 @@ Image convertVectorToImage (vector<float> vector_pixels, int channels) {
 /*
     Flips image verticaly
  */
-pixel ** flipImageVertical(pixel **pixmap_vertical_flip) {
-    for (int row = IMAGE_HEIGHT-1; row >= 0; row--)
-        for (int col = 0; col < IMAGE_WIDTH; col++) {
-            pixmap_vertical_flip[(IMAGE_HEIGHT-1)-row][col] = PIXMAP[row][col];
+void flipImageVertical(float *&pixmap_vertical_flip, int height, int width, int channels) {
+    pixel ** temp_pixmap;
+    initializePixmap(temp_pixmap);
+
+    int i = 0;
+    for (int row = height-1; row >= 0; row--)
+        for (int col = 0; col < width; col++) {
+            temp_pixmap[row][col].r = pixmap_vertical_flip[i++];
+            temp_pixmap[row][col].g = pixmap_vertical_flip[i++];
+            temp_pixmap[row][col].b = pixmap_vertical_flip[i++];
+            temp_pixmap[row][col].a = pixmap_vertical_flip[i++];
         }
 
-    return pixmap_vertical_flip;
+    i = 0;
+    for (int row = 0; row < height; row++)
+        for (int col = 0; col < width; col++) {
+            pixmap_vertical_flip[i++] = temp_pixmap[row][col].r;
+            pixmap_vertical_flip[i++] = temp_pixmap[row][col].g;
+            pixmap_vertical_flip[i++] = temp_pixmap[row][col].b;
+            pixmap_vertical_flip[i++] = temp_pixmap[row][col].a;
+    }
+
+    delete temp_pixmap;
 }
 
 /* Reads image specified in argv[1]
@@ -484,8 +498,9 @@ void handleKey(unsigned char key, int x, int y) {
     if (key == 'w') {
         if(OUTPUT_FILE != NULL) {
             int window_width = glutGet(GLUT_WINDOW_WIDTH), window_height = glutGet(GLUT_WINDOW_HEIGHT);
-            float *glut_display_map = (float *) malloc(window_width*window_height*4);
+            float *glut_display_map = (float *) malloc(window_width*window_height*4*sizeof(float));
             glReadPixels(0,0, window_width, window_height, GL_RGBA, GL_FLOAT, glut_display_map);
+            flipImageVertical(glut_display_map, window_height, window_width, 4);
             writeImage(glut_display_map, window_width, window_height);
         }
         else
